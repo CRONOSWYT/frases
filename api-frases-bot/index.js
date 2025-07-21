@@ -1,57 +1,54 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { db } from './db.js';
+// index.js
+require('dotenv').config();
+const { Client, GatewayIntentBits } = require('discord.js');
+const cron = require('node-cron');
+const Database = require('better-sqlite3');
+const path = require('path');
 
-dotenv.config();
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
-
-// Obtener todas las frases
-app.get('/frases', (req, res) => {
-  const frases = db.prepare('SELECT * FROM frases ORDER BY fecha_programada, hora_programada').all();
-  res.json(frases);
+// Inicializa el cliente de Discord
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// Obtener la próxima frase programada y no enviada
-app.get('/frasedeldia', (req, res) => {
+// Carga la base de datos (frases.db en la raíz o carpeta db)
+const db = new Database(path.join(__dirname, 'frases.db'));
+
+// Verifica que la tabla exista, si no la crea
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS frases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contenido TEXT NOT NULL,
+    fecha TEXT NOT NULL,   -- formato: AAAA-MM-DD
+    hora TEXT NOT NULL,    -- formato: HH:mm
+    canal_id TEXT NOT NULL -- canal donde se enviará
+  )
+`).run();
+
+// Función para enviar frases si coinciden con la fecha y hora actual
+function verificarYEnviarFrases() {
   const ahora = new Date();
-  const fecha = ahora.toISOString().split('T')[0];
-  const hora = ahora.toTimeString().split(':').slice(0, 2).join(':');
-  const frase = db.prepare(`
-    SELECT * FROM frases 
-    WHERE enviada = 0 AND fecha_programada <= ? AND hora_programada <= ?
-    ORDER BY fecha_programada ASC, hora_programada ASC
-    LIMIT 1
-  `).get(fecha, hora);
-  res.json({ frase: frase?.texto || null });
+  const fecha = ahora.toISOString().slice(0, 10); // yyyy-mm-dd
+  const hora = ahora.toTimeString().slice(0, 5);  // HH:mm
+
+  const frases = db.prepare('SELECT * FROM frases WHERE fecha = ? AND hora = ?').all(fecha, hora);
+
+  frases.forEach(frase => {
+    const canal = client.channels.cache.get(frase.canal_id);
+    if (canal) {
+      canal.send(frase.contenido).catch(console.error);
+    } else {
+      console.warn(`Canal no encontrado: ${frase.canal_id}`);
+    }
+  });
+}
+
+// Cron para verificar frases cada minuto
+cron.schedule('* * * * *', verificarYEnviarFrases);
+
+// Cuando el bot esté listo
+client.once('ready', () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
 });
 
-// Agregar una nueva frase
-app.post('/frases', (req, res) => {
-  const { texto, autor, fecha_programada, hora_programada } = req.body;
-  const stmt = db.prepare('INSERT INTO frases (texto, autor, fecha_programada, hora_programada) VALUES (?, ?, ?, ?)');
-  stmt.run(texto, autor, fecha_programada, hora_programada);
-  res.status(201).json({ ok: true });
-});
-
-// Eliminar una frase
-app.delete('/frases/:id', (req, res) => {
-  const stmt = db.prepare('DELETE FROM frases WHERE id = ?');
-  stmt.run(req.params.id);
-  res.json({ ok: true });
-});
-
-// Marcar frase como enviada
-app.put('/frases/:id/enviar', (req, res) => {
-  const stmt = db.prepare('UPDATE frases SET enviada = 1 WHERE id = ?');
-  stmt.run(req.params.id);
-  res.json({ ok: true });
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ API corriendo en el puerto ${PORT}`);
-});
+// Inicia sesión con el token de Discord
+client.login(process.env.DISCORD_TOKEN);
