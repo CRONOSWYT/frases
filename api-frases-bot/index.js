@@ -1,5 +1,3 @@
-// index.js
-require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const cron = require('node-cron');
 const Database = require('better-sqlite3');
@@ -50,5 +48,11 @@ client.once('ready', () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
 });
 
-// Inicia sesión con el token de Discord
-client.login(process.env.DISCORD_TOKEN);
+// Inicia sesión con el token de Discord desde la variable de entorno de Render
+const token = process.env.DISCORD_TOKEN;
+if (!token) {
+  console.error("❌ Error: DISCORD_TOKEN no está definida en las variables de entorno.");
+  process.exit(1);
+}
+
+client.login(token);
