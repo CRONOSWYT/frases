@@ -1,0 +1,16 @@
+{
+  "name": "frases-discord-bot",
+  "version": "1.0.0",
+  "description": "Bot de Discord que envía frases diarias",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.11.0",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
